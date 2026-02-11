@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+venv/
+base_model/
+healthcare_slm/
+vector_store/
+*.pkl
+documents/

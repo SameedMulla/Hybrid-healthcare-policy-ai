@@ -1,0 +1,11 @@
+[
+  {
+    "text": "### Instruction: Generate healthcare budget allocation recommendation for Bihar 2028-29.\n### Input: Disease Index 0.45, Infrastructure Gap High, HR Gap Medium.\n### Response: Based on projected disease burden and infrastructure deficit, Bihar requires increased allocation focused on PHC expansion, vaccine procurement, workforce hiring, and rural health strengthening."
+  },
+  {
+    "text": "### Instruction: Recommend vaccine allocation for Maharashtra 2028-29.\n### Input: Population 12 crore, Disease Index 0.32, Cold Chain Capacity Moderate.\n### Response: Maharashtra should allocate vaccine stock proportional to population growth and expand cold storage infrastructure to prevent wastage."
+  },
+  {
+    "text": "### Instruction: Suggest hospital expansion strategy for Uttar Pradesh 2028.\n### Input: Bed Ratio 0.7 per 1000, High Rural Population.\n### Response: Uttar Pradesh requires district-level hospital expansion, ICU upgrades, and new PHCs in underserved rural clusters."
+  }
+]

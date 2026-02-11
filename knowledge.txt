@@ -1,0 +1,15 @@
+Bihar Healthcare Report 2027:
+Disease Index: 0.52
+Hospital Bed Ratio: 0.6 per 1000 population
+Rural population: 70%
+Budget Deficit: 18%
+
+Maharashtra Vaccine Planning 2027:
+Population: 12 crore
+Cold Storage Capacity: Moderate
+Urban Immunization Rate: 78%
+
+Uttar Pradesh Health Infrastructure:
+High rural density.
+Doctor to patient ratio below national average.
+ICU capacity insufficient in eastern districts.
