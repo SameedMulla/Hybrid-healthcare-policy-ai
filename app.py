@@ -290,7 +290,7 @@ df = load_healthcare_data()
 predictions_df = load_predictions()
 engine = load_recommendation_engine()
 states_list = sorted(df['state'].unique().tolist())
-latest_year = df['year'].max()
+latest_year = min(df['year'].max(), 2026)  # Current real year is 2026
 latest_data = df[df['year'] == latest_year]
 
 # -------------------------

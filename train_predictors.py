@@ -153,38 +153,77 @@ predictions = []
 for state in df['state'].unique():
     state_data = df[df['state'] == state].sort_values('year')
     latest = state_data.iloc[-1]  # 2027 data
+    n_years = len(state_data) - 1  # number of year gaps (7)
+
+    # Calculate historical Compound Annual Growth Rates (CAGR) per metric
+    def safe_cagr(series):
+        """Calculate CAGR, returning a small positive rate if data is flat or negative."""
+        start, end = series.iloc[0], series.iloc[-1]
+        if start <= 0 or end <= 0:
+            return 0.02  # default 2% growth
+        cagr = (end / start) ** (1 / n_years) - 1
+        return max(cagr, 0.01)  # floor at 1% minimum growth
+
+    cagr_budget = safe_cagr(state_data['health_budget_crore'])
+    cagr_hospitals = safe_cagr(state_data['hospitals_total'])
+    cagr_doctors = safe_cagr(state_data['doctors_total'])
+    cagr_icu = safe_cagr(state_data['icu_beds'])
+    cagr_nurses = safe_cagr(state_data['nurses_total'])
+    cagr_vaccine_doses = safe_cagr(state_data['vaccine_doses_required_cr'])
+    cagr_beds_per_1000 = safe_cagr(state_data['hospital_beds_per_1000'])
 
     for target_year in [2028, 2029]:
+        years_ahead = target_year - 2027
+
         # Project forward using trends
         growth_rate_pop = (state_data['population_crore'].iloc[-1] / state_data['population_crore'].iloc[0]) ** (1/7) - 1
         growth_rate_urban = (state_data['urban_pct'].iloc[-1] - state_data['urban_pct'].iloc[0]) / 7
 
-        proj_population = latest['population_crore'] * (1 + growth_rate_pop) ** (target_year - 2027)
-        proj_urban = min(latest['urban_pct'] + growth_rate_urban * (target_year - 2027), 99)
-        proj_disease = max(latest['disease_index'] - 0.01 * (target_year - 2027), 0.15)
-        proj_infra_gap = max(latest['infra_gap_score'] - 0.2 * (target_year - 2027), 1.0)
-        proj_hospitals = latest['hospitals_total'] * (1 + 0.035)  ** (target_year - 2027)
-        proj_doctors = latest['doctors_total'] * (1 + 0.03) ** (target_year - 2027)
-        proj_vaccine_cov = min(latest['vaccine_coverage_pct'] + 1.5 * (target_year - 2027), 98)
-        proj_mmr = max(latest['maternal_mortality_ratio'] - 3 * (target_year - 2027), 15)
-        proj_imr = max(latest['infant_mortality_rate'] - 1.5 * (target_year - 2027), 4)
+        proj_population = latest['population_crore'] * (1 + growth_rate_pop) ** years_ahead
+        proj_urban = min(latest['urban_pct'] + growth_rate_urban * years_ahead, 99)
+        proj_disease = max(latest['disease_index'] - 0.01 * years_ahead, 0.15)
+        proj_infra_gap = max(latest['infra_gap_score'] - 0.2 * years_ahead, 1.0)
+        proj_hospitals = latest['hospitals_total'] * (1 + 0.035) ** years_ahead
+        proj_doctors = latest['doctors_total'] * (1 + 0.03) ** years_ahead
+        proj_vaccine_cov = min(latest['vaccine_coverage_pct'] + 1.5 * years_ahead, 98)
+        proj_mmr = max(latest['maternal_mortality_ratio'] - 3 * years_ahead, 15)
+        proj_imr = max(latest['infant_mortality_rate'] - 1.5 * years_ahead, 4)
 
         state_enc = le_state.transform([state])[0]
 
-        # Budget prediction
+        # Budget prediction via ML
         budget_input = np.array([[
             state_enc, target_year, proj_population, proj_disease,
             proj_infra_gap, proj_urban, proj_hospitals, proj_doctors,
             proj_vaccine_cov, proj_mmr, proj_imr
         ]])
-        predicted_budget = budget_model.predict(budget_input)[0]
+        ml_predicted_budget = budget_model.predict(budget_input)[0]
 
-        # Resource prediction
+        # Trend-based budget floor (CAGR projection)
+        trend_budget = latest['health_budget_crore'] * (1 + cagr_budget) ** years_ahead
+        predicted_budget = max(ml_predicted_budget, trend_budget)
+
+        # Resource prediction via ML
         resource_input = np.array([[
             state_enc, target_year, proj_population, proj_disease,
             proj_infra_gap, proj_urban, predicted_budget
         ]])
-        predicted_resources = resource_model.predict(resource_input)[0]
+        ml_predicted_resources = resource_model.predict(resource_input)[0]
+
+        # Enforce CAGR-based growth floors for each resource metric
+        trend_hospitals = latest['hospitals_total'] * (1 + cagr_hospitals) ** years_ahead
+        trend_doctors = latest['doctors_total'] * (1 + cagr_doctors) ** years_ahead
+        trend_vaccine_doses = latest['vaccine_doses_required_cr'] * (1 + cagr_vaccine_doses) ** years_ahead
+        trend_icu = latest['icu_beds'] * (1 + cagr_icu) ** years_ahead
+        trend_beds_1000 = latest['hospital_beds_per_1000'] * (1 + cagr_beds_per_1000) ** years_ahead
+        trend_nurses = latest['nurses_total'] * (1 + cagr_nurses) ** years_ahead
+
+        final_hospitals = max(ml_predicted_resources[0], trend_hospitals)
+        final_doctors = max(ml_predicted_resources[1], trend_doctors)
+        final_vaccine_doses = max(ml_predicted_resources[2], trend_vaccine_doses)
+        final_icu = max(ml_predicted_resources[3], trend_icu)
+        final_beds_1000 = max(ml_predicted_resources[4], trend_beds_1000)
+        final_nurses = max(ml_predicted_resources[5], trend_nurses)
 
         predictions.append({
             'state': str(state),
@@ -194,12 +233,12 @@ for state in df['state'].unique():
             'infra_gap_score': float(round(proj_infra_gap, 1)),
             'urban_pct': float(round(proj_urban, 1)),
             'predicted_budget_crore': float(round(predicted_budget, 0)),
-            'predicted_hospitals': float(round(predicted_resources[0], 0)),
-            'predicted_doctors': float(round(predicted_resources[1], 0)),
-            'predicted_vaccine_doses_cr': float(round(predicted_resources[2], 2)),
-            'predicted_icu_beds': float(round(predicted_resources[3], 0)),
-            'predicted_beds_per_1000': float(round(predicted_resources[4], 2)),
-            'predicted_nurses': float(round(predicted_resources[5], 0)),
+            'predicted_hospitals': float(round(final_hospitals, 0)),
+            'predicted_doctors': float(round(final_doctors, 0)),
+            'predicted_vaccine_doses_cr': float(round(final_vaccine_doses, 2)),
+            'predicted_icu_beds': float(round(final_icu, 0)),
+            'predicted_beds_per_1000': float(round(final_beds_1000, 2)),
+            'predicted_nurses': float(round(final_nurses, 0)),
             'projected_vaccine_coverage_pct': float(round(proj_vaccine_cov, 1)),
             'projected_mmr': float(round(proj_mmr, 0)),
             'projected_imr': float(round(proj_imr, 0))
