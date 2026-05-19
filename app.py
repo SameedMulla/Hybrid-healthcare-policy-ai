@@ -19,6 +19,7 @@ from plotly.subplots import make_subplots
 import json
 import os
 import joblib
+import requests
 
 # -------------------------
 # Page Configuration
@@ -239,21 +240,57 @@ def load_budget_model():
 
 @st.cache_resource
 def load_llm():
+    model_name = os.getenv("OLLAMA_MODEL", "mistral:7b")
+    base_url = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434").rstrip("/")
+
     try:
-        from llama_cpp import Llama
-        
-        # This will automatically download and cache the GGUF model from HuggingFace
-        model = Llama.from_pretrained(
-            repo_id="bartowski/Meta-Llama-3.1-8B-Instruct-GGUF",
-            filename="Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf",
-            n_gpu_layers=-1, # Offloads to the 4060 GPU completely for max speed
-            n_ctx=2048,      # Setting context window
-            verbose=False
-        )
-        return None, model # We just return the model. Tokenizer is built-in.
+        response = requests.get(f"{base_url}/api/tags", timeout=5)
+        response.raise_for_status()
+        available_models = {
+            model.get("name")
+            for model in response.json().get("models", [])
+        }
+        if model_name not in available_models:
+            st.warning(
+                f"Ollama is running, but `{model_name}` is not installed. "
+                f"Run `ollama pull {model_name}` once, then reload this page."
+            )
+            return None, None
+        return None, {"model": model_name, "base_url": base_url}
     except Exception as e:
-        st.warning(f"LLM not loaded: {e}")
+        st.warning(
+            "Ollama is not available. Install/start Ollama and run "
+            f"`ollama pull {model_name}`. Details: {e}"
+        )
         return None, None
+
+
+def stream_ollama_chat(llm_model, messages, max_tokens):
+    payload = {
+        "model": llm_model["model"],
+        "messages": messages,
+        "stream": True,
+        "options": {
+            "temperature": 0.4,
+            "top_p": 0.9,
+            "num_predict": max_tokens,
+        },
+    }
+
+    with requests.post(
+        f"{llm_model['base_url']}/api/chat",
+        json=payload,
+        stream=True,
+        timeout=300,
+    ) as response:
+        response.raise_for_status()
+        for line in response.iter_lines():
+            if not line:
+                continue
+            chunk = json.loads(line.decode("utf-8"))
+            content = chunk.get("message", {}).get("content")
+            if content:
+                yield content
 
 
 # -------------------------
@@ -321,7 +358,7 @@ with st.sidebar:
     st.markdown("---")
     st.markdown("""
     <p style="color: #90E0EF; font-size: 0.75rem;">
-    🤖 Powered by Llama 3.1 8B Instruct<br>
+    🤖 Powered by Ollama Mistral 7B<br>
     📊 ML Predictions: GBR + RF<br>
     🔍 RAG: FAISS + MiniLM<br>
     💡 100% Offline Operation
@@ -990,7 +1027,7 @@ with tab5:
                         for rec in rec_data['recommendations'][:3]:
                             pred_info += f"- {rec['category']}: {rec['gap']}\n"
 
-                # Build Llama 3.1 native chat template prompt
+                # Build Ollama chat prompt
                 system_msg = """You are a senior Government Healthcare Strategy Advisor for India with deep expertise in public health policy, resource allocation, and state-level healthcare systems.
 
 Your responses must ALWAYS follow this EXACT structure with numbered headings:
@@ -1025,21 +1062,9 @@ Policy Question: {user_input}"""
                     if detected_state:
                         st.info(f"📍 State: **{detected_state}** | 📊 Data Points: {len(retrieved_context.split())} words retrieved")
 
-                    response_iterator = llm_model.create_chat_completion(
-                        messages=messages,
-                        max_tokens=max_tokens,
-                        temperature=0.4,
-                        top_p=0.9,
-                        stream=True
+                    answer = st.write_stream(
+                        stream_ollama_chat(llm_model, messages, max_tokens)
                     )
-
-                    def generate_stream():
-                        for chunk in response_iterator:
-                            delta = chunk['choices'][0].get('delta', {})
-                            if 'content' in delta:
-                                yield delta['content']
-
-                    answer = st.write_stream(generate_stream())
                     st.session_state.messages.append({"role": "assistant", "content": answer})
                     
                 except Exception as e:

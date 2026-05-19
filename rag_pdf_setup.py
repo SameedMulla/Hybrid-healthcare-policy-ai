@@ -34,16 +34,19 @@ print(f"   Loaded {len(kb_docs)} document(s) from knowledge.txt")
 # -------------------------
 print("\n[2/4] Loading PDF documents from documents/...")
 pdf_count = 0
-for file in os.listdir("documents"):
-    if file.endswith(".pdf"):
-        try:
-            loader = PyPDFLoader(f"documents/{file}")
-            pdf_docs = loader.load()
-            all_documents.extend(pdf_docs)
-            pdf_count += 1
-            print(f"   [OK] {file} ({len(pdf_docs)} pages)")
-        except Exception as e:
-            print(f"   [FAIL] {file}: {e}")
+if os.path.isdir("documents"):
+    for file in os.listdir("documents"):
+        if file.endswith(".pdf"):
+            try:
+                loader = PyPDFLoader(f"documents/{file}")
+                pdf_docs = loader.load()
+                all_documents.extend(pdf_docs)
+                pdf_count += 1
+                print(f"   [OK] {file} ({len(pdf_docs)} pages)")
+            except Exception as e:
+                print(f"   [FAIL] {file}: {e}")
+else:
+    print("   documents/ not found, skipping PDF documents")
 print(f"   Total PDFs processed: {pdf_count}")
 
 # -------------------------
